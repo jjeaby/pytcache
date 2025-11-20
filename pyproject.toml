@@ -27,5 +27,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = "src"
 
+[tool.pyright]
+extraPaths = ["src"]
+
 [project.entry-points."pytest11"]
 llm_cache = "pytest_llm_cache.pytest_llm_cache"
