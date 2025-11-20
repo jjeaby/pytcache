@@ -11,7 +11,7 @@
 
 ## 설치 방법
 
-권장 가상환경을 생성한 뒤 패키지를 설치합니다.
+권장 가상환경을 생성한 뒤 패키지를 설치합니다. Poetry를 사용하면 pyproject.toml 기반으로 동일하게 동작합니다.
 
 ```bash
 python -m venv .venv
@@ -19,7 +19,7 @@ source .venv/bin/activate
 pip install -r requirements.txt  # 내부적으로 -e .[dev] 를 설치합니다.
 ```
 
-또는 `pip install -e .[dev]` 를 직접 실행해도 동일합니다.
+또는 `pip install -e .[dev]` 를 직접 실행해도 동일합니다. Poetry 사용 시에는 `poetry install` 로 기본 의존성만 설치하고, 테스트/플러그인 개발까지 진행하려면 `poetry install --with dev` 로 옵션 의존성(`pytest`)을 함께 설치하세요.
 
 ## 설정
 
@@ -51,7 +51,7 @@ OPENAI_API_KEY=sk-...
 └── ...
 ```
 
-루트에 있는 `pytest.ini` 는 `src/` 레이아웃을 인식하도록 구성되어 있으므로, 별도의 `PYTHONPATH` 조정 없이 바로 테스트를 실행할 수 있습니다.
+`pyproject.toml` 의 `[tool.pytest.ini_options]` 에서 `pythonpath = "src"` 를 지정하므로, 별도의 환경변수 수정 없이 pytest 가 패키지를 찾을 수 있습니다.
 
 ## 실행 방법
 
