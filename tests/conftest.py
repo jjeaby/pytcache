@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-pytest_plugins = ("pytcache.pytest_llm_cache",)
+pytest_plugins = ("pytest_llm_cache.pytest_llm_cache",)
 
 
 _CACHE_FILE = Path(".pytest-llm-cache/llm_responses.json")

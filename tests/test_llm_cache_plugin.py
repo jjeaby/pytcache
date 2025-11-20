@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from pytcache.pytest_llm_cache import LLMCache
+from pytest_llm_cache.pytest_llm_cache import LLMCache
 
 
 def _load_payload(path):

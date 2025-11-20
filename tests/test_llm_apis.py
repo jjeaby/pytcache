@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-from pytcache import gemini_client, openai_client
+from pytest_llm_cache.clients import gemini_client, openai_client
 
 
 def _require_real_env(var_name: str):

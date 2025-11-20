@@ -1,6 +1,13 @@
-# PYTEST LLM Cache Example (Gemini & ChatGPT)
+# pytest-llm-cache
 
-이 프로젝트는 Python을 사용하여 Google Gemini와 OpenAI ChatGPT API를 호출하는 예제
+`pytest-llm-cache` 는 pytest 플러그인으로, LLM 호출 결과를 디스크에 저장하여 반복되는 API 호출을 자동으로 캐싱합니다.
+Gemini/OpenAI 예제 클라이언트와 테스트 스위트를 함께 제공하므로, 실전 플러그인 개발 흐름(예: `pytest-cov`, `pytest-mock`)에 맞춰
+구조화된 레포지토리를 참고할 수 있습니다.
+
+- Pytest 플러그인 진입점(`pytest11`)을 통해 자동으로 로드되거나, `pytest_plugins` 로 수동 등록 가능
+- 동일 provider+프롬프트+메타데이터 조합을 SHA-256 키로 관리, 디스크 캐시(JSON)로 일관된 결과 재사용
+- `"에러 발생:"` 로 시작하는 실패 응답은 자동으로 캐시하지 않아, 임시 오류가 캐시를 오염시키지 않음
+- 캐시 통계(`stats`)에 provider별 히트율/재사용 횟수 등을 포함하여 상태를 쉽게 파악
 
 ## 사전 준비
 
@@ -11,7 +18,7 @@
 
 ## 설치 방법
 
-권장 가상환경을 생성한 뒤 패키지를 설치합니다. Poetry를 사용하면 pyproject.toml 기반으로 동일하게 동작합니다.
+권장 가상환경을 생성한 뒤 패키지를 설치합니다. Poetry를 사용하면 `pyproject.toml` 기반으로 동일하게 동작합니다.
 
 ```bash
 python -m venv .venv
@@ -34,14 +41,15 @@ OPENAI_API_KEY=sk-...
 ## 폴더 구조
 
 ```
-├── pyproject.toml          # 패키지/빌드 설정
+├── pyproject.toml          # 패키지/빌드 설정 및 pytest 플러그인 엔트리포인트
 ├── requirements.txt        # 개발 편의를 위한 메타 설치 파일 (-e .[dev])
 ├── src
-│   └── pytcache            # 라이브러리 및 pytest 플러그인 구현
-│       ├── __init__.py
-│       ├── gemini_client.py
-│       ├── openai_client.py
-│       └── pytest_llm_cache.py
+│   └── pytest_llm_cache
+│       ├── pytest_llm_cache.py     # pytest 플러그인 본체
+│       ├── clients/                # 플러그인 데모/테스트용 LLM 클라이언트
+│       │   ├── gemini_client.py
+│       │   └── openai_client.py
+│       └── __init__.py
 ├── tests                   # 단위/통합 테스트
 │   ├── conftest.py
 │   ├── test_llm_cache_plugin.py
@@ -51,18 +59,18 @@ OPENAI_API_KEY=sk-...
 └── ...
 ```
 
-`pyproject.toml` 의 `[tool.pytest.ini_options]` 에서 `pythonpath = "src"` 를 지정하므로, 별도의 환경변수 수정 없이 pytest 가 패키지를 찾을 수 있습니다.
+`pyproject.toml` 의 `[tool.pytest.ini_options]` 에서 `pythonpath = "src"` 를 지정하므로, 별도의 환경변수 수정 없이 pytest 가 패키지를 찾을 수 있습니다. `src/pytest_llm_cache/clients` 디렉터리는 플러그인 테스트 및 문서용 샘플 코드에만 사용되며, 실제 애플리케이션에서는 자신만의 클라이언트를 연결하면 됩니다.
 
 ## 실행 방법
 
 ### Google Gemini 실행
 ```bash
-python -m pytcache.gemini_client
+python -m pytest_llm_cache.clients.gemini_client
 ```
 
 ### OpenAI ChatGPT 실행
 ```bash
-python -m pytcache.openai_client
+python -m pytest_llm_cache.clients.openai_client
 ```
 
 ## 테스트 실행
@@ -85,9 +93,10 @@ pytest
 
 ## Pytest LLM 캐시 플러그인
 
-`pytcache/pytest_llm_cache.py` 는 pytest 실행 시 실제 LLM 호출 결과를 JSON 캐시에 저장하고,
+`pytest_llm_cache/pytest_llm_cache.py` 는 pytest 실행 시 실제 LLM 호출 결과를 JSON 캐시에 저장하고,
 동일한 프롬프트가 다시 요청되면 저장된 응답을 재사용합니다. `tests/conftest.py` 에서 기본적으로
-플러그인을 로드하므로 바로 사용할 수 있습니다.
+플러그인을 로드하므로 바로 사용할 수 있습니다. 패키지를 설치하면 `pyproject.toml` 의 `pytest11`
+엔트리포인트 덕분에 pytest 가 자동으로 플러그인을 발견합니다.
 
 주요 옵션:
 
@@ -103,11 +112,11 @@ pytest --llm-cache-refresh   # 강제로 새 응답 요청
 pytest --llm-cache-disable   # 캐시 사용하지 않음
 ```
 
-플러그인은 다음과 같은 세션 스코프 픽스처를 제공합니다.
+플러그인은 다음과 같은 세션 스코프 픽스처를 제공합니다(테스트나 conftest에서 바로 주입 가능).
 
 - `llm_cache`: 저수준 캐시 객체 (`get_or_create` 메서드 사용)
-- `llm_cached_call(provider, prompt, factory, *, metadata=None, should_cache=None)`: 임의의 호출 래핑용 헬퍼 (`should_cache(response)` 콜백으로 캐시 여부 제어 가능)
-- `gemini_cached_response(prompt)`, `openai_cached_response(prompt)`: 각 LLM을 편하게 호출하는 헬퍼
+- `llm_cached_call(provider, prompt, factory, *, metadata=None, should_cache=None)`: 임의 호출 래핑용 헬퍼 (`should_cache(response)` 콜백으로 캐시 여부 제어)
+- `gemini_cached_response(prompt)`, `openai_cached_response(prompt)`: 각 LLM 클라이언트 호출을 손쉽게 래핑한 유틸
 
 빌트인 LLM 헬퍼들은 `"에러 발생:"` 으로 시작하는 문자열(실패 응답)을 자동으로 캐시에 저장하지 않습니다.
 따라서 API 쿼터 부족 등 일시적인 오류 메시지가 캐시를 오염시키지 않으며, 필요하다면 사용자 정의

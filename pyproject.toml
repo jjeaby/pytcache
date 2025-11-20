@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pytcache"
+name = "pytest-llm-cache"
 version = "0.1.0"
 description = "LLM caching helpers and pytest plugin for Gemini/OpenAI workflows"
 readme = "README.md"
@@ -26,3 +26,6 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = "src"
+
+[project.entry-points."pytest11"]
+llm_cache = "pytest_llm_cache.pytest_llm_cache"

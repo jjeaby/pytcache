@@ -12,7 +12,7 @@ import time
 
 import pytest
 
-from . import gemini_client, openai_client
+from .clients import gemini_client, openai_client
 
 DEFAULT_CACHE_FILE = Path(".pytest-llm-cache/llm_responses.json")
 
