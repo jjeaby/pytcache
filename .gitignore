@@ -1,0 +1,141 @@
+# =========================================================
+# Node.js / JavaScript / TypeScript 공통
+# =========================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# lock 파일 (원한다면 유지 가능)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# dotenv 환경 변수 파일
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# 빌드/배포
+dist/
+build/
+out/
+coverage/
+tmp/
+temp/
+.cache/
+.eslintcache
+
+# =========================================================
+# Vite 관련
+# =========================================================
+vite.config.ts.timestamp-*
+vite.config.js.timestamp-*
+.vite/
+vite-temp/
+
+# =========================================================
+# React 관련
+# =========================================================
+# CRA나 react-scripts 사용 시
+build/
+public/static/
+
+# Webpack / SWC 캐시
+.cache/
+webpack-cache/
+.swc/
+
+# =========================================================
+# TypeScript
+# =========================================================
+*.tsbuildinfo
+*.tsbuildinfo.*
+tsconfig.tsbuildinfo
+
+
+#
+# python
+#
+.venv
+__pycache__
+.pytest-llm-cache
+
+# =========================================================
+# VSCode
+# =========================================================
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# VSCode 백업
+.history/
+*.code-workspace
+
+# =========================================================
+# JetBrains (WebStorm / IntelliJ)
+# =========================================================
+.idea/
+*.iml
+*.iws
+out/
+
+# Run/debug 관련
+.idea/runConfigurations/
+
+# File-based index
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/usage.statistics.xml
+
+# Plugins
+.idea/jsLibraryMappings.xml
+.idea/modules.xml
+
+# JetBrains 캐시
+.idea/assetWizard/
+.idea/shelf/
+.idea/docker/
+.idea/httpRequests/
+
+# =========================================================
+# Log / Temp
+# =========================================================
+logs/
+*.log
+*.bak
+*.tmp
+*.swp
+*.swo
+
+# =========================================================
+# OS 파일
+# =========================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+__MACOSX/
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# =========================================================
+# 기타
+# =========================================================
+*.local
+*.secret
+*.pem
+*.key
