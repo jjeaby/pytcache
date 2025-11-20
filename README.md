@@ -40,7 +40,7 @@ OPENAI_API_KEY=sk-...
 
 ## 폴더 구조
 
-```
+```python
 ├── pyproject.toml          # 패키지/빌드 설정 및 pytest 플러그인 엔트리포인트
 ├── requirements.txt        # 개발 편의를 위한 메타 설치 파일 (-e .[dev])
 ├── src
@@ -64,11 +64,13 @@ OPENAI_API_KEY=sk-...
 ## 실행 방법
 
 ### Google Gemini 실행
+
 ```bash
 python -m pytest_llm_cache.clients.gemini_client
 ```
 
 ### OpenAI ChatGPT 실행
+
 ```bash
 python -m pytest_llm_cache.clients.openai_client
 ```
