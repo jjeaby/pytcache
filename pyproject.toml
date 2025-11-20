@@ -7,7 +7,7 @@ name = "pytcache"
 version = "0.1.0"
 description = "LLM caching helpers and pytest plugin for Gemini/OpenAI workflows"
 readme = "README.md"
-authors = [{name = "Your Name"}]
+authors = [{name = "jjeaby@gmail.com"}]
 license = {text = "MIT"}
 requires-python = ">=3.11"
 dependencies = [
