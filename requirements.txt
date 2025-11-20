@@ -1,4 +1,1 @@
-google-generativeai
-openai
-python-dotenv
-pytest
+-e .[dev]

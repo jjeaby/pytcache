@@ -11,11 +11,15 @@
 
 ## 설치 방법
 
-필요한 라이브러리를 설치합니다.
+권장 가상환경을 생성한 뒤 패키지를 설치합니다.
 
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt  # 내부적으로 -e .[dev] 를 설치합니다.
 ```
+
+또는 `pip install -e .[dev]` 를 직접 실행해도 동일합니다.
 
 ## 설정
 
@@ -30,15 +34,24 @@ OPENAI_API_KEY=sk-...
 ## 폴더 구조
 
 ```
-├── pytcache
-│   ├── __init__.py
-│   ├── gemini_client.py
-│   └── openai_client.py
-├── tests
+├── pyproject.toml          # 패키지/빌드 설정
+├── requirements.txt        # 개발 편의를 위한 메타 설치 파일 (-e .[dev])
+├── src
+│   └── pytcache            # 라이브러리 및 pytest 플러그인 구현
+│       ├── __init__.py
+│       ├── gemini_client.py
+│       ├── openai_client.py
+│       └── pytest_llm_cache.py
+├── tests                   # 단위/통합 테스트
+│   ├── conftest.py
+│   ├── test_llm_cache_plugin.py
+│   ├── test_gemini_cache_usage.py
+│   ├── test_openai_cache_usage.py
 │   └── test_llm_apis.py
-├── README.md
-└── requirements.txt
+└── ...
 ```
+
+루트에 있는 `pytest.ini` 는 `src/` 레이아웃을 인식하도록 구성되어 있으므로, 별도의 `PYTHONPATH` 조정 없이 바로 테스트를 실행할 수 있습니다.
 
 ## 실행 방법
 
