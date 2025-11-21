@@ -65,6 +65,9 @@ tsconfig.tsbuildinfo
 .venv
 __pycache__
 .pytest-llm-cache
+# packaging artifacts (setuptools/pip)
+*.egg-info/
+**/*.egg-info/
 
 # =========================================================
 # VSCode

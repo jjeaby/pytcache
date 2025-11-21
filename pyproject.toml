@@ -1,28 +1,24 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
 
-[project]
+[tool.poetry]
 name = "pytest-llm-cache"
 version = "0.1.0"
 description = "LLM caching helpers and pytest plugin for Gemini/OpenAI workflows"
+authors = ["jjeaby@gmail.com"]
+license = "MIT"
 readme = "README.md"
-authors = [{name = "jjeaby@gmail.com"}]
-license = {text = "MIT"}
-requires-python = ">=3.11"
-dependencies = [
-    "google-generativeai",
-    "openai",
-    "python-dotenv",
-]
+packages = [{ include = "pytest_llm_cache", from = "src" }]
 
-[project.optional-dependencies]
-dev = [
-    "pytest>=8.0",
-]
+[tool.poetry.dependencies]
+python = ">=3.11"
+google-generativeai = "*"
+openai = "*"
+python-dotenv = "*"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
 
 [tool.pytest.ini_options]
 pythonpath = "src"
@@ -30,5 +26,5 @@ pythonpath = "src"
 [tool.pyright]
 extraPaths = ["src"]
 
-[project.entry-points."pytest11"]
+[tool.poetry.plugins."pytest11"]
 llm_cache = "pytest_llm_cache.pytest_llm_cache"
