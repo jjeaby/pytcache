@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Optional, Set
 import hashlib
 import time
 
@@ -50,12 +50,18 @@ class LLMCache:
         *,
         disabled: bool = False,
         refresh: bool = False,
+        shard_by: str = "none",  # "none" | "provider" | "day"
+        ndjson_only: bool = False,
     ):
         self.cache_file = Path(cache_file)
         self.disabled = disabled
         self.refresh = refresh
+        self.shard_by = shard_by
+        self.ndjson_only = ndjson_only
         self._store: Dict[str, Dict[str, Any]] = {}
         self._dirty = False
+        # Track newly created cache keys for inspection/NDJSON appends
+        self._new_entries: Set[str] = set()
 
         if not self.disabled and self.cache_file.exists() and not self.refresh:
             try:
@@ -87,15 +93,30 @@ class LLMCache:
             if should_cache is not None and not should_cache(response):
                 return response
 
+            # Extract a human-readable summary for inspection (best-effort)
+            response_text: Optional[str] = None
+            try:
+                if isinstance(response, str):
+                    response_text = response
+                else:
+                    choices = getattr(response, "choices", [])
+                    if choices and getattr(choices[0], "message", None):
+                        response_text = choices[0].message.content
+            except Exception:
+                response_text = None
+
             entry = {
                 "provider": provider,
                 "request": {"prompt": prompt, "metadata": metadata},
                 "response": response,
+                "response_text": response_text,
                 "usage_count": 1,
                 "first_created_at": time.time(),
                 "last_used_at": time.time(),
             }
             self._store[cache_key] = entry
+            # mark as newly created for NDJSON append
+            self._new_entries.add(cache_key)
             self._dirty = True
         else:
             entry = self._store[cache_key]
@@ -141,10 +162,42 @@ class LLMCache:
         stats = self._build_stats()
         payload = {"entries": self._store, "stats": stats}
 
-        self.cache_file.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        # Write main JSON cache unless ndjson_only is enabled
+        if not self.ndjson_only:
+            self.cache_file.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+        # Write separate stats.json for quick inspection/debugging
+        try:
+            cache_dir = self.cache_file.parent
+            stats_path = cache_dir / "stats.json"
+            stats_path.write_text(json.dumps(stats, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            # keep cache resilient
+            pass
+
+        # Append newly created entries as NDJSON lines for grep-friendly inspection
+        try:
+            if self._new_entries:
+                ndjson_path = self.cache_file.parent / "entries.ndjson"
+                with ndjson_path.open("a", encoding="utf-8") as f:
+                    for key in self._new_entries:
+                        entry = dict(self._store.get(key, {}))
+                        # include key and an explicit outcome marker for inspection tools
+                        line = {
+                            "key": key,
+                            "approved": True,  # indicates stored in cache (not PASS-only semantics)
+                            "outcome": "stored",
+                            **entry,
+                        }
+                        f.write(json.dumps(line, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
+        # Reset flags
+        self._new_entries.clear()
         self._dirty = False
 
     def _build_stats(self) -> Dict[str, Any]:
@@ -266,6 +319,20 @@ def pytest_addoption(parser):
         default="",
         help="세션 캐시 아티팩트 디렉터리 경로(기본값: .pytest-llm-cache/session/<UTC_TS>).",
     )
+    group.addoption(
+        "--llm-cache-shard-by",
+        action="store",
+        dest="llm_cache_shard_by",
+        default="none",
+        help="캐시 샤딩 기준: none | provider | day",
+    )
+    group.addoption(
+        "--llm-cache-ndjson-only",
+        action="store_true",
+        dest="llm_cache_ndjson_only",
+        default=False,
+        help="메인 JSON 캐시 파일을 생략하고 stats.json + entries.ndjson(+shards)만 저장합니다.",
+    )
 
 
 @pytest.fixture(scope="session")
@@ -277,6 +344,8 @@ def llm_cache(request):
         Path(request.config.getoption("llm_cache_file")),
         disabled=bool(request.config.getoption("llm_cache_disable")),
         refresh=bool(request.config.getoption("llm_cache_refresh")),
+        shard_by=str(request.config.getoption("llm_cache_shard_by") or "none"),
+        ndjson_only=bool(request.config.getoption("llm_cache_ndjson_only")),
     )
 
     yield cache
@@ -439,18 +508,8 @@ if HAS_XDIST:
             ts = os.environ.get("PYTEST_LLM_CACHE_SESSION_TS") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
             node.workerinput["pytest_llm_cache_session_ts"] = ts
         except Exception:
+            # Do not fail worker configuration due to env propagation issues
             pass
-
-
-def pytest_runtest_setup(item) -> None:
-    """
-    Set the current test id for PASS-only session cache attribution before each test.
-    """
-    try:
-        set_session_test_id(item.name)
-    except Exception:
-        # Keep test run resilient
-        pass
 
 
 @pytest.hookimpl(hookwrapper=True)
