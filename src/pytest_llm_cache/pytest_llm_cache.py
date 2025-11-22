@@ -30,6 +30,48 @@ HAS_XDIST = importlib.util.find_spec("xdist") is not None
 
 DEFAULT_CACHE_FILE = Path(".pytest-llm-cache/llm_responses.json")
 
+def _get_session_id() -> str:
+    return os.getenv("PYTEST_LLM_CACHE_SESSION_TS") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+def _ts_for_filename() -> str:
+    ts = _get_session_id()
+    try:
+        dt = datetime.strptime(ts, "%Y%m%dT%H%M%SZ")
+        return dt.strftime("%Y%m%d_%H%M%S")
+    except Exception:
+        return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+def _file_prefix() -> str:
+    return f"pytcache_{_ts_for_filename()}_"
+
+def _default_run_dir() -> Path:
+    base_str = os.getenv("PYTEST_LLM_CACHE_DIR") or ".pytest-llm-cache"
+    ts = _get_session_id()
+    try:
+        dt = datetime.strptime(ts, "%Y%m%dT%H%M%SZ")
+        run_folder = dt.strftime("%Y%m%d-%H%M%S")
+    except Exception:
+        run_folder = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    run_dir = Path(base_str) / run_folder
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
+
+def _build_default_cache_file() -> Path:
+    return _default_run_dir() / "llm_responses.json"
+
+def _append_run_log(entry: Dict[str, Any]) -> None:
+    """
+    Append a single NDJSON line to the per-run log file under the run directory.
+    """
+    try:
+        run_dir = _default_run_dir()
+        log_path = run_dir / "run_log.ndjson"
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except Exception:
+        # Keep logging resilient; never break tests
+        pass
+
 
 def _should_cache_llm_response(response: Any) -> bool:
     """Return False when the response looks like a transient LLM error."""
@@ -50,14 +92,10 @@ class LLMCache:
         *,
         disabled: bool = False,
         refresh: bool = False,
-        shard_by: str = "none",  # "none" | "provider" | "day"
-        ndjson_only: bool = False,
     ):
         self.cache_file = Path(cache_file)
         self.disabled = disabled
         self.refresh = refresh
-        self.shard_by = shard_by
-        self.ndjson_only = ndjson_only
         self._store: Dict[str, Dict[str, Any]] = {}
         self._dirty = False
         # Track newly created cache keys for inspection/NDJSON appends
@@ -162,12 +200,11 @@ class LLMCache:
         stats = self._build_stats()
         payload = {"entries": self._store, "stats": stats}
 
-        # Write main JSON cache unless ndjson_only is enabled
-        if not self.ndjson_only:
-            self.cache_file.write_text(
-                json.dumps(payload, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+        # Write main JSON cache (always)
+        self.cache_file.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
         # Write separate stats.json for quick inspection/debugging
         try:
@@ -181,7 +218,9 @@ class LLMCache:
         # Append newly created entries as NDJSON lines for grep-friendly inspection
         try:
             if self._new_entries:
-                ndjson_path = self.cache_file.parent / "entries.ndjson"
+                cache_dir = self.cache_file.parent
+                # Write main entries.ndjson next to cache file
+                ndjson_path = cache_dir / "entries.ndjson"
                 with ndjson_path.open("a", encoding="utf-8") as f:
                     for key in self._new_entries:
                         entry = dict(self._store.get(key, {}))
@@ -194,6 +233,7 @@ class LLMCache:
                         }
                         f.write(json.dumps(line, ensure_ascii=False) + "\n")
         except Exception:
+            # keep cache resilient
             pass
 
         # Reset flags
@@ -292,13 +332,6 @@ def pytest_addoption(parser):
         help="JSON 파일 경로 (기본값: .pytest-llm-cache/llm_responses.json)",
     )
     group.addoption(
-        "--llm-cache-refresh",
-        action="store_true",
-        dest="llm_cache_refresh",
-        default=False,
-        help="캐시 파일을 무시하고 LLM 응답을 다시 요청합니다.",
-    )
-    group.addoption(
         "--llm-cache-disable",
         action="store_true",
         dest="llm_cache_disable",
@@ -312,27 +345,6 @@ def pytest_addoption(parser):
         default=False,
         help="PASS된 테스트에서 승인된 응답만 세션 동안 재사용합니다.",
     )
-    group.addoption(
-        "--llm-cache-session-dir",
-        action="store",
-        dest="llm_cache_session_dir",
-        default="",
-        help="세션 캐시 아티팩트 디렉터리 경로(기본값: .pytest-llm-cache/session/<UTC_TS>).",
-    )
-    group.addoption(
-        "--llm-cache-shard-by",
-        action="store",
-        dest="llm_cache_shard_by",
-        default="none",
-        help="캐시 샤딩 기준: none | provider | day",
-    )
-    group.addoption(
-        "--llm-cache-ndjson-only",
-        action="store_true",
-        dest="llm_cache_ndjson_only",
-        default=False,
-        help="메인 JSON 캐시 파일을 생략하고 stats.json + entries.ndjson(+shards)만 저장합니다.",
-    )
 
 
 @pytest.fixture(scope="session")
@@ -340,12 +352,12 @@ def llm_cache(request):
     """
     Session-scoped fixture providing access to the LLM cache helper.
     """
+    opt_path = Path(request.config.getoption("llm_cache_file"))
+    cache_file = _build_default_cache_file() if str(opt_path) == str(DEFAULT_CACHE_FILE) else opt_path
+
     cache = LLMCache(
-        Path(request.config.getoption("llm_cache_file")),
+        cache_file,
         disabled=bool(request.config.getoption("llm_cache_disable")),
-        refresh=bool(request.config.getoption("llm_cache_refresh")),
-        shard_by=str(request.config.getoption("llm_cache_shard_by") or "none"),
-        ndjson_only=bool(request.config.getoption("llm_cache_ndjson_only")),
     )
 
     yield cache
@@ -370,6 +382,17 @@ def llm_cached_call(llm_cache):
         # Try PASS-only session cache first (no-op if disabled)
         cached = session_lookup(provider, prompt, metadata or {})
         if cached is not None:
+            try:
+                _append_run_log({
+                    "event": "cache_session_hit",
+                    "provider": provider,
+                    "prompt": prompt,
+                    "metadata": metadata or {},
+                    "test_id": getattr(item, "nodeid", None) if "item" in locals() else None,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                })
+            except Exception:
+                pass
             return cached
 
         # Execute and store via primary JSON cache
@@ -380,6 +403,16 @@ def llm_cached_call(llm_cache):
             metadata=metadata,
             should_cache=should_cache,
         )
+        try:
+            _append_run_log({
+                "event": "cache_primary_get_or_create",
+                "provider": provider,
+                "prompt": prompt,
+                "metadata": metadata or {},
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            })
+        except Exception:
+            pass
 
         # Record pending call for PASS-only session cache (respect should_cache if provided)
         try:
@@ -492,8 +525,7 @@ def pytest_configure(config) -> None:
     # Configure PASS-only session cache from options
     try:
         enabled = bool(config.getoption("llm_cache_pass_only"))
-        session_dir_opt = config.getoption("llm_cache_session_dir") or ""
-        configure_session_cache(session_dir=session_dir_opt if session_dir_opt else None, enabled=enabled)
+        configure_session_cache(session_dir=None, enabled=enabled)
     except Exception:
         # Keep configuration resilient
         pass
@@ -519,6 +551,18 @@ def pytest_runtest_makereport(item, call):
     """
     outcome = yield
     report = outcome.get_result()
+
+    # Per-phase test lifecycle logging
+    try:
+        _append_run_log({
+            "event": "test_phase",
+            "test_id": item.nodeid,
+            "when": report.when,
+            "outcome": ("passed" if report.passed else ("failed" if report.failed else report.outcome)),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception:
+        pass
 
     # Approve and persist cache entries only on successful test calls
     if report.when == "call" and report.passed:

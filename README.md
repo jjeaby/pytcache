@@ -113,18 +113,16 @@ pytest
 플러그인을 로드하므로 바로 사용할 수 있습니다. 패키지를 설치하면 `pyproject.toml` 의 `pytest11`
 엔트리포인트 덕분에 pytest 가 자동으로 플러그인을 발견합니다.
 
-주요 옵션:
-
+주요 옵션(간소화):
 - `--llm-cache-file`: 캐시 파일 경로 (기본값 `.pytest-llm-cache/llm_responses.json`)
-- `--llm-cache-refresh`: 기존 캐시를 무시하고 이번 실행에서만 새 응답을 저장
 - `--llm-cache-disable`: 캐시 기능 비활성화
+- `--llm-cache-pass-only`: PASS된 테스트에서 승인된 응답만 세션 동안 재사용
 
 예시:
-
 ```bash
 pytest --llm-cache-file .cache/llm.json
-pytest --llm-cache-refresh   # 강제로 새 응답 요청
 pytest --llm-cache-disable   # 캐시 사용하지 않음
+pytest --llm-cache-pass-only # PASS-only 세션 캐시 활성화
 ```
 
 플러그인은 다음과 같은 세션 스코프 픽스처를 제공합니다(테스트나 conftest에서 바로 주입 가능).
@@ -139,8 +137,8 @@ pytest --llm-cache-disable   # 캐시 사용하지 않음
 
 캐시 파일은 JSON 형식으로 저장되며, `entries` 객체 아래에 해시된 요청 ID별 레코드가 쌓입니다. 각 레코드는
 `provider`, `request`(프롬프트와 호출 시 사용한 모든 파라미터), `response` 문자열, `usage_count`
-(해당 응답을 몇 번 재사용했는지), `first_created_at`, `last_used_at` 타임스탬프를 포함합니다.
-최상위에는 `stats` 블록이 있어 전체 캐시 현황을 한눈에 파악할 수 있습니다. 주요 키:
+(해당 응답을 몇 번 재사용했는지), `first_created_at`, `last_used_at` 타임스탬프를 포함합니다. 최상위에는
+`stats` 블록이 있어 전체 캐시 현황을 한눈에 파악할 수 있습니다. 주요 키:
 
 - `total_entries`, `provider_entry_counts`: 캐시에 저장된 고유 요청 수(전체/Provider별)
 - `total_usage_count`, `average_usage_count`, `provider_usage`: 캐시된 응답이 사용된 누적 횟수와 평균값
@@ -149,22 +147,14 @@ pytest --llm-cache-disable   # 캐시 사용하지 않음
 - `provider_hit_counts`, `provider_request_counts`, `provider_hit_rates`, `provider_average_usage_counts`: Provider별 세부지표
 - `provider_stats`: 위 모든 정보를 Provider별 객체 단위로 모아둔 종합 뷰
 
-이 정보를 기반으로 어떤 Provider가 캐시 효과를 잘 보고 있는지, 적중률이 떨어지는 프롬프트가 있는지 등을 쉽게 파악할 수 있습니다.
-내부적으로 provider + 프롬프트 + 메타데이터 조합을 SHA-256으로 해시하여 키로 사용하므로, 프롬프트뿐 아니라
-모델, temperature 등 메타데이터까지 동일할 때만 캐시를 재사용하며, 요청 파라미터가 다르면 자동으로 신규
-응답을 받아 저장합니다. 이런 구조 덕분에 `entries.<hash>.request` 를 확인하면 어떤 조건으로 캐시되었는지 쉽게
-디버깅하고, `stats` 로 전반적인 상태를 살필 수 있습니다.
-
 ### 캐시 파일 확인 및 초기화
 
 - 기본 저장 위치는 `.pytest-llm-cache/llm_responses.json` 입니다. 실행 후 아래처럼 내용을 바로 확인할 수 있습니다.
-
   ```bash
   cat .pytest-llm-cache/llm_responses.json | jq .stats
   ```
 
-- 특정 테스트/세션에서만 새 응답을 받고 싶다면 `pytest --llm-cache-refresh` 를 사용하거나 파일을 직접 삭제하면 됩니다.
-- 캐시에 실패 응답이 남지 않도록 기본 헬퍼가 "에러 발생:" 문자열을 무시하므로, 오류가 반복될 경우 로그와 환경 변수를 먼저 확인하세요.
+- 특정 테스트/세션에서 새 응답을 받고 싶으면 파일을 삭제하거나, 프롬프트/메타데이터(모델/온도 등)를 변경해 새로운 키를 생성하세요.
 
 ## 검사/디버깅 아티팩트 (Inspection & Debugging Artifacts)
 
@@ -202,7 +192,7 @@ pytest --llm-cache-disable   # 캐시 사용하지 않음
 
 - PASS-only 세션 캐시 (선택 기능)
   - 활성화 플래그: `--llm-cache-pass-only`
-  - 세션 아티팩트 경로(기본): `.pytest-llm-cache/session/<UTC_TS>/`
+  - 세션 아티팩트 경로(기본): `.pytest-llm-cache/session/<YYYY-MM-DD>/<UTC_TS>/`
     - `<테스트명>.ndjson`: 각 테스트의 승인/실패 엔트리 (approved=true/false, outcome=passed/failed)
     - `_stats.single.json`: 세션 중간 스냅샷
     - `_stats.json`: 세션 종료 시 집계 요약
@@ -210,49 +200,3 @@ pytest --llm-cache-disable   # 캐시 사용하지 않음
     - 테스트 통과 시: pending 엔트리를 approved=true, outcome=passed 로 기록
     - 테스트 실패 시: approved=false, outcome=failed 로 기록(재사용되지 않음)
   - 용도: e2e 스타일 시나리오에서 PASS된 호출만 세션 내에서 재사용하고, 문제 상황을 per-test 파일로 바로 추적
-
-## 대용량 캐시 운영 전략 — Sharding & NDJSON-only
-
-캐시 엔트리가 많아지는 경우, 단일 JSON 파일에 모든 엔트리를 저장하는 대신 “샤딩(분할 저장)”과 “NDJSON-only” 모드를 제공하여 검토/디버깅/머지 충돌을 줄이고 I/O를 최적화합니다.
-
-- 샤딩 옵션
-  - CLI: `--llm-cache-shard-by <none|provider|day>`
-  - `provider` 샤딩:
-    - 경로: `.pytest-llm-cache/shards/providers/<provider>.ndjson`
-    - 목적: Provider별로 빠르게 신규 엔트리를 추적
-  - `day` 샤딩:
-    - 경로: `.pytest-llm-cache/shards/dates/<YYYYMMDD>.ndjson`
-    - 목적: 날짜 기준으로 로그/변경을 스캔하기 용이
-  - 저장 기준:
-    - 모든 신규 엔트리는 기본 `entries.ndjson`에 append 되고, 선택한 샤드 파일에도 동일 라인이 append 됩니다.
-    - 메인 JSON 파일(전체 스냅샷)은 `--llm-cache-ndjson-only`가 아닌 경우에만 저장됩니다.
-
-- NDJSON-only 모드
-  - CLI: `--llm-cache-ndjson-only`
-  - 동작: 메인 JSON 파일(전체 스냅샷)을 생략하고 다음 파일만 저장
-    - `stats.json`: 요약 통계
-    - `entries.ndjson`: 신규 엔트리 라인 append
-    - 선택 샤드: `shards/providers/*.ndjson`, `shards/dates/*.ndjson`
-  - 목적: 큰 캐시에서의 저장 속도 최적화, 충돌 감소, grep/파이프라인 친화적 워크플로우
-
-- 선택 가이드
-  - 단일 파일(기본): 엔트리 수가 적고, 한눈에 전체 스냅샷이 필요할 때
-  - 샤딩(provider/day): 팀이 Provider/날짜 기준으로 검사/감사를 자주 하거나, 파일 크기가 커져 머지 충돌이 잦을 때
-  - NDJSON-only: CI 파이프라인이나 대량 캐시에서 저장 속도/충돌 최소화가 필요할 때 (스냅샷은 stats.json으로 대체)
-
-- 예시
-  ```bash
-  # Provider 기준 샤딩 + 메인 JSON 유지
-  pytest --llm-cache-shard-by provider
-
-  # 날짜 기준 샤딩 + NDJSON-only (전체 스냅샷 생략)
-  pytest --llm-cache-shard-by day --llm-cache-ndjson-only
-
-  # PASS-only 세션 + Provider 샤딩을 혼합 사용
-  pytest --llm-cache-pass-only --llm-cache-shard-by provider
-  ```
-
-- 유의사항
-  - NDJSON 라인은 “신규 엔트리”만 기록합니다(키가 이미 존재하는 재사용 히트는 기록하지 않음).
-  - stats.json은 save 호출 시 dirty 상태일 때 항상 갱신되어 최신 요약을 제공합니다.
-  - PASS-only 세션 캐시는 테스트 단위(per-test)로 별도 NDJSON을 생성하며, 승인된 엔트리만 재사용합니다(레거시 메인 캐시와 독립).

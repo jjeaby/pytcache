@@ -55,8 +55,21 @@ def _get_session_id() -> str:
 def _default_session_dir() -> Path:
     """
     Default artifact root for session cache data.
+    Base directory configurable via PYTEST_LLM_CACHE_DIR; defaults to '.pytest-llm-cache'.
+    Under the base directory, create a per-run folder named 'YYYYMMDD-HHMMSS'.
     """
-    return Path(".pytest-llm-cache") / "session" / _get_session_id()
+    base_dir = os.getenv("PYTEST_LLM_CACHE_DIR") or ".pytest-llm-cache"
+    session_ts = _get_session_id()
+    try:
+        dt = datetime.strptime(session_ts, "%Y%m%dT%H%M%SZ")
+        run_folder = dt.strftime("%Y%m%d-%H%M%S")
+    except Exception:
+        run_folder = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return Path(base_dir) / run_folder
+
+
+
+
 
 
 @dataclass
